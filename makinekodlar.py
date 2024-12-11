@@ -131,133 +131,114 @@ modelsThing(classKNN)
 
 
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
-import matplotlib.pyplot as plt
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split, RepeatedStratifiedKFold, GridSearchCV, cross_val_score
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, f1_score, precision_score, recall_score
 
-# Veri setini yükle
+# Veri setini okuma ve ön iþleme
+dataSet = pd.read_csv('C:/Users/bahab/OneDrive/Masaüstü/heart_normalized.csv')
+dataSet.shape
 
-data = pd.read_csv('C:/Users/bahab/OneDrive/Masaüstü/heart_normalized.csv')
+dataCopy = dataSet.copy(deep=True)
 
-# Özellikler ve hedef deðiþkeni ayýr
-X = data.drop(columns=["HeartDisease"])  # Girdi özellikleri
-y = data["HeartDisease"]  # Hedef deðiþken
+# Öznitelikler ve hedef deðiþkenlerin ayrýlmasý
+features = dataCopy[dataCopy.columns.drop(['HeartDisease'])].values
+target = dataCopy['HeartDisease'].values
 
-# Eðitim ve test setlerine ayýr
-#test size 0,2= verinin %20'si test için kalaný eðitim için kullanýlýr
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Eðitim ve test verilerinin bölünmesi
+x_train, x_test, y_train, y_test = train_test_split(features, target, test_size=0.20, random_state=2)
 
-# Karar aðacý modelini oluþtur ve eðit (en iyi hiperparametrelerle)
+# Performans ölçüm fonksiyonu
+def evaluate_model(classifier, model_name):
+    print(f"Model: {model_name}\n")
+    classifier.fit(x_train, y_train)
+    prediction = classifier.predict(x_test)
 
-best_params = {'criterion': 'gini', 'max_depth': 5, 'min_samples_leaf': 4, 'min_samples_split': 5}
-#bölünme kriteri gini,derinliði 5 ,bir yaprak düðümde en az 4 örnek olmalý,bir düðümde daha fazla dallanma yapmak için
-#en az 5 örnek gereklidir
-clf = DecisionTreeClassifier(**best_params, random_state=42)
-#karar aðacý sýnýflandýrýcý. karar aðacýný oluþturup eðitim verisi ile eðitir (x ve y)
-clf.fit(X_train, y_train)
+    # Çapraz doðrulama
+    cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=5, random_state=1)
 
-# Tahmin yap 
-y_pred = clf.predict(X_test)
-#eðitilen model x test verileri üzerinden tahmin yapar
+    accuracy = accuracy_score(y_test, prediction)
+    roc_auc = roc_auc_score(y_test, prediction)
+    f1 = f1_score(y_test, prediction)
+    precision = precision_score(y_test, prediction)
+    recall = recall_score(y_test, prediction)
 
-# Performans metrikleri
-accuracy = accuracy_score(y_test, y_pred)
-#doðruluk oraný hesaplar y_test true positive diðeri true negatif toplanýr
-classification_rep = classification_report(y_test, y_pred, output_dict=True)
-#modelin doðruluðu,precision,recall,f1 hesaplar ve sözlük olarak döner
-conf_matrix = confusion_matrix(y_test, y_pred)
-#confusion matrix oluþturur
+    print("Doðruluk:", '{0:.2%}'.format(accuracy))
+    print("F1 Skoru:", '{0:.2%}'.format(f1))
+    print("Precision:", '{0:.2%}'.format(precision))
+    print("Recall:", '{0:.2%}'.format(recall))
+    print("Çapraz Doðrulama (ROC AUC):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='roc_auc').mean()))
+    print("Çapraz Doðrulama (Accuracy):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='accuracy').mean()))
+    print("Çapraz Doðrulama (F1):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='f1').mean()))
+    print("Çapraz Doðrulama (Precision):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='precision').mean()))
+    print("Çapraz Doðrulama (Recall):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='recall').mean()))
+    print("ROC AUC:", '{0:.2%}'.format(roc_auc))
 
-#Performans sonuçlarýný pandas DataFrame formatýnda oluþtur
-#results_df performans metriklerini dataframe oluþturur
-#Metric Score ve Explanation satýrlarýný oluþturur
-results_df = pd.DataFrame({
-    "Metric": ["Accuracy", "Macro Avg Precision", "Macro Avg Recall", "Macro Avg F1-Score", 
-               "Weighted Avg Precision", "Weighted Avg Recall", "Weighted Avg F1-Score"],
-    "Score": [
-        accuracy,
-        classification_rep["macro avg"]["precision"],
-        classification_rep["macro avg"]["recall"],
-        classification_rep["macro avg"]["f1-score"],
-        classification_rep["weighted avg"]["precision"],
-        classification_rep["weighted avg"]["recall"],
-        classification_rep["weighted avg"]["f1-score"]
-    ],
-    "Explanation": [
-        "Genel doðruluk oraný (tüm sýnýflar için)", 
-        "Her sýnýfýn doðruluk ortalamasýnýn hesaplanmasý", 
-        "Her sýnýfýn recall (duyarlýlýk) ortalamasý", 
-        "Her sýnýfýn F1-Skor ortalamasý",
-        "Her sýnýfýn aðýrlýklý doðruluk oraný (sýnýf örnek sayýsýna göre aðýrlýklý)", 
-        "Her sýnýfýn aðýrlýklý recall deðeri",
-        "Her sýnýfýn aðýrlýklý F1-Skoru"
-    ]
-})
+    # Sýnýflandýrma raporu
+    print("\nClassification Report:\n")
+    print(classification_report(y_test, prediction))
+    print("-" * 60)
 
-# Etiketlerin döndürülmesi
-plt.figure(figsize=(25, 40))
-plot_tree(
-    clf, 
-    feature_names=X.columns, 
-    class_names=["No Heart Disease", "Heart Disease"], 
-    filled=True
-)
+    return accuracy, roc_auc, f1, precision, recall
 
-# Etiketleri döndürme
-plt.xticks(rotation=45)  # Etiketlerin yatayda döndürülmesi
-plt.yticks(rotation=45)  # Etiketlerin dikeyde döndürülmesi
+# Grid Search ile hiperparametre optimizasyonu
+def optimize_with_grid_search(classifier, param_grid, model_name):
+    print(f"Grid Search ile {model_name} Hiperparametre Optimizasyonu\n")
+    grid_search = GridSearchCV(estimator=classifier, param_grid=param_grid, cv=5, scoring='accuracy', n_jobs=-1, error_score='raise')
+    grid_search.fit(x_train, y_train)
 
-plt.title("Figure 1: Karar Aðacý")
-plt.show()
+    print(f"En Ýyi Parametreler: {grid_search.best_params_}")
+    best_model = grid_search.best_estimator_
+    return evaluate_model(best_model, f"{model_name} (Optimizasyonlu)")
 
+# Modellerin tanýmlanmasý ve parametre aralýklarý
+classKNN = KNeighborsClassifier()
+knn_param_grid = {
+    'n_neighbors': range(1, 200),
+    'p': [1, 2],
+    'metric': ['euclidean', 'manhattan'],
+    'weights': ['distance', 'uniform']
+}
 
+classifier_lr = LogisticRegression(random_state=0,max_iter=1000)
+lr_param_grid = [
+    {'penalty': ['l1'], 'solver': ['liblinear', 'saga'], 'C': [0.1, 1, 10]},
+    {'penalty': ['l2'], 'solver': ['lbfgs', 'liblinear', 'sag', 'saga'], 'C': [0.1, 1, 10]},
+    {'penalty': ['elasticnet'], 'solver': ['saga'], 'C': [0.1, 1, 10], 'l1_ratio': [0.1, 0.5, 0.9]}
+]
+classifier_dt = DecisionTreeClassifier(random_state=0)
+dt_param_grid = {
+    'criterion': ['gini', 'entropy'],
+    'max_depth': range(1, 20),
+    'min_samples_split': range(2, 20),
+    'min_samples_leaf': range(1, 10)
+}
 
-# Performans tablosunu çiz (Figure 2)
-fig2, ax2 = plt.subplots(figsize=(10, 5))
-ax2.axis('tight')
-#axis eksen sýnýrlarýný ayarlar
-ax2.axis('off')
-# x y eksenlerini gizler. 
+# Modellerin deðerlendirilmesi ve optimizasyonu
+accuracy_knn, roc_auc_knn, f1_knn, precision_knn, recall_knn = evaluate_model(classKNN, "K-Nearest Neighbors")
+accuracy_lr, roc_auc_lr, f1_lr, precision_lr, recall_lr = evaluate_model(classifier_lr, "Logistic Regression")
+accuracy_dt, roc_auc_dt, f1_dt, precision_dt, recall_dt = evaluate_model(classifier_dt, "Decision Tree")
 
-# Tabloyu oluþtur
-#performans sonuçlarýný tablolaþtýrýr
-table2 = ax2.table(cellText=results_df.values, colLabels=results_df.columns, cellLoc='center', loc='center')
+opt_accuracy_knn, opt_roc_auc_knn, opt_f1_knn, opt_precision_knn, opt_recall_knn = optimize_with_grid_search(classKNN, knn_param_grid, "K-Nearest Neighbors")
+opt_accuracy_lr, opt_roc_auc_lr, opt_f1_lr, opt_precision_lr, opt_recall_lr = optimize_with_grid_search(classifier_lr, lr_param_grid, "Logistic Regression")
+opt_accuracy_dt, opt_roc_auc_dt, opt_f1_dt, opt_precision_dt, opt_recall_dt = optimize_with_grid_search(classifier_dt, dt_param_grid, "Decision Tree")
 
-# 1. satýr ve sütunu koyu gri yapmak
-for (i, j), cell in table2.get_celld().items():
-    if i == 0 or j == 0:  # Ýlk satýr ve ilk sütun
-        cell.set_text_props(weight='bold', color='white')  # Yazýyý beyaz yap
-        cell.set_facecolor('#4C4C4C')  # Koyu gri renk
-    else:
-        cell.set_text_props(weight='normal', color='black')  # Diðer hücreler normal
-        cell.set_facecolor('white')  # Diðer hücreler beyaz
+# En iyi modelin seçimi
+best_model_name = ""
+best_metric = 0
+best_metrics = {}
 
-# Tabloyu stilize et
-table2.auto_set_font_size(False)
-table2.set_fontsize(10)
-table2.auto_set_column_width(col=list(range(len(results_df.columns))))
+for model_name, metrics in {
+    "K-Nearest Neighbors": (opt_accuracy_knn, opt_roc_auc_knn, opt_f1_knn, opt_precision_knn, opt_recall_knn),
+    "Logistic Regression": (opt_accuracy_lr, opt_roc_auc_lr, opt_f1_lr, opt_precision_lr, opt_recall_lr),
+    "Decision Tree": (opt_accuracy_dt, opt_roc_auc_dt, opt_f1_dt, opt_precision_dt, opt_recall_dt)
+}.items():
+    if metrics[0] > best_metric:
+        best_metric = metrics[0]
+        best_model_name = model_name
+        best_metrics = metrics
 
-plt.title("Figure 2: Performans Tablosu", pad=20)
-plt.show()
-
-# Confusion Matrix'i pandas DataFrame ile organize et
-conf_matrix_df = pd.DataFrame(
-    conf_matrix, 
-    columns=["No Heart Disease (Pred)", "Heart Disease (Pred)"],
-    index=["No Heart Disease (Actual)", "Heart Disease (Actual)"]
-)
-
-# Confusion Matrix'i çiz (Figure 3)
-fig3, ax3 = plt.subplots(figsize=(5, 5))
-ax3.matshow(conf_matrix, cmap='Blues', alpha=0.7)
-for i in range(conf_matrix.shape[0]):
-    for j in range(conf_matrix.shape[1]):
-        ax3.text(x=j, y=i, s=conf_matrix[i, j], va='center', ha='center', fontsize=12)
-        
-ax3.set_xticks(range(2))
-ax3.set_yticks(range(2))
-ax3.set_xticklabels(["No Heart Disease (Pred)", "Heart Disease (Pred)"], rotation=45, ha="left")
-ax3.set_yticklabels(["No Heart Disease (Actual)", "Heart Disease (Actual)"])
-plt.title("Figure 3: Confusion Matrix", pad=20)
-plt.show()
+print(f"Bu veri seti için en iyi model: {best_model_name}")
+print(f"Doðruluk: {best_metrics[0]:.2%}, ROC AUC: {best_metrics[1]:.2%}, F1: {best_metrics[2]:.2%}, Precision: {best_metrics[3]:.2%}, Recall: {best_metrics[4]:.2%}")
