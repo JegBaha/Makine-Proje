@@ -1,0 +1,114 @@
+import pandas as pd
+import seaborn as sns
+from matplotlib import pyplot as plt
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import train_test_split, RepeatedStratifiedKFold, GridSearchCV, cross_val_score
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, confusion_matrix
+
+# Veri setini okuma ve ön işleme
+dataSet = pd.read_csv('C:/Users/user/Desktop/Machine/heart_normalized.csv')
+dataSet.shape
+
+dataCopy = dataSet.copy(deep=True)
+
+# Öznitelikler ve hedef değişkenlerin ayrılması
+features = dataCopy[dataCopy.columns.drop(['HeartDisease'])].values
+target = dataCopy['HeartDisease'].values
+
+# Eğitim ve test verilerinin bölünmesi
+x_train, x_test, y_train, y_test = train_test_split(features, target, test_size=0.20, random_state=2)
+
+# Performans ölçüm fonksiyonu
+def evaluate_model(classifier, model_name):
+    print(f"Model: {model_name}\n")
+    classifier.fit(x_train, y_train)
+    prediction = classifier.predict(x_test)
+
+    # Çapraz doğrulama
+    cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=5, random_state=1)
+
+    accuracy = accuracy_score(y_test, prediction)
+    roc_auc = roc_auc_score(y_test, prediction)
+
+    print("Doğruluk:", '{0:.2%}'.format(accuracy))
+    print("Çapraz Doğrulama (ROC AUC):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='roc_auc').mean()))
+    print("Çapraz Doğrulama (Accuracy):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='accuracy').mean()))
+    print("Çapraz Doğrulama (F1):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='f1').mean()))
+    print("Çapraz Doğrulama (Precision):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='precision').mean()))
+    print("ROC AUC:", '{0:.2%}'.format(roc_auc))
+
+    # Sınıflandırma raporu
+    print("\nClassification Report:\n")
+    print(classification_report(y_test, prediction))
+    print("-" * 60)
+
+    print("\nConfusion Matrix:\n")
+    cm = confusion_matrix(y_test, prediction)
+    print(cm)
+
+    return accuracy, roc_auc
+
+# Grid Search ile hiperparametre optimizasyonu
+def optimize_with_grid_search(classifier, param_grid, model_name):
+    print(f"Grid Search ile {model_name} Hiperparametre Optimizasyonu\n")
+    grid_search = GridSearchCV(estimator=classifier, param_grid=param_grid, cv=5, scoring='accuracy', n_jobs=-1)
+    grid_search.fit(x_train, y_train)
+
+    print(f"En İyi Parametreler: {grid_search.best_params_}")
+    best_model = grid_search.best_estimator_
+    return evaluate_model(best_model, f"{model_name} (Optimizasyonlu)")
+
+# Modellerin tanımlanması ve parametre aralıkları
+classKNN = KNeighborsClassifier()
+knn_param_grid = {
+    'n_neighbors': range(1, 200),
+    'p': [1, 2],
+    'metric': ['euclidean', 'manhattan'],
+     'weights':['distance','uniform']
+}
+
+classifier_lr = LogisticRegression(random_state=0,max_iter=1000)
+lr_param_grid = [
+    # L1 Penalty
+    {'penalty': ['l1'], 'solver': ['liblinear', 'saga'], 'C': [0.01, 0.1, 1, 10, 100]},
+
+    # L2 Penalty
+    {'penalty': ['l2'], 'solver': ['lbfgs', 'liblinear', 'sag', 'saga'], 'C': [0.01, 0.1, 1, 10, 100]},
+
+    # ElasticNet Penalty
+    {'penalty': ['elasticnet'], 'solver': ['saga'], 'C': [0.01, 0.1, 1, 10, 100],
+     'l1_ratio': [0.1, 0.3, 0.5, 0.7, 0.9]},
+
+    # No Penalty
+    {'penalty': [None], 'solver': ['lbfgs', 'saga'], 'C': [1]}
+]
+
+# Modellerin değerlendirilmesi ve optimizasyonu
+accuracy_knn, roc_auc_knn = evaluate_model(classKNN, "K-Nearest Neighbors")
+accuracy_lr, roc_auc_lr = evaluate_model(classifier_lr, "Logistic Regression")
+
+opt_accuracy_knn, opt_roc_auc_knn = optimize_with_grid_search(classKNN, knn_param_grid, "K-Nearest Neighbors")
+opt_accuracy_lr, opt_roc_auc_lr = optimize_with_grid_search(classifier_lr, lr_param_grid, "Logistic Regression")
+
+
+prediction = classifier_lr.predict(x_test)
+
+# Confusion Matrix hesapla
+# Confusion Matrix
+cm = confusion_matrix(y_test, prediction)
+plt.figure(figsize=(7, 5))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["No Disease", "Disease"], yticklabels=["No Disease", "Disease"])
+plt.title(f'Confusion Matrix - {LogisticRegression}')
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.show()
+
+
+# En iyi modelin seçimi
+if opt_accuracy_knn > opt_accuracy_lr:
+    print("Bu veri seti için en iyi model: K-Nearest Neighbors")
+    print(f"Doğruluk: {opt_accuracy_knn:.2%}, ROC AUC: {opt_roc_auc_knn:.2%}")
+else:
+    print("Bu veri seti için en iyi model: Logistic Regression")
+    print(f"Doğruluk: {opt_accuracy_lr:.2%}, ROC AUC: {opt_roc_auc_lr:.2%}")
