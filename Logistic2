@@ -1,0 +1,28 @@
+def evaluate_model(classifier, model_name):
+    print(f"Model: {model_name}\n")
+    classifier.fit(x_train, y_train)
+    prediction = classifier.predict(x_test)
+
+    # Çapraz doğrulama
+    cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=5, random_state=1)
+
+    accuracy = accuracy_score(y_test, prediction)
+    roc_auc = roc_auc_score(y_test, prediction)
+
+    print("Doğruluk:", '{0:.2%}'.format(accuracy))
+    print("Çapraz Doğrulama (ROC AUC):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='roc_auc').mean()))
+    print("Çapraz Doğrulama (Accuracy):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='accuracy').mean()))
+    print("Çapraz Doğrulama (F1):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='f1').mean()))
+    print("Çapraz Doğrulama (Precision):", '{0:.2%}'.format(cross_val_score(classifier, x_train, y_train, cv=cv, scoring='precision').mean()))
+    print("ROC AUC:", '{0:.2%}'.format(roc_auc))
+
+    # Sınıflandırma raporu
+    print("\nClassification Report:\n")
+    print(classification_report(y_test, prediction))
+    print("-" * 60)
+
+    print("\nConfusion Matrix:\n")
+    cm = confusion_matrix(y_test, prediction)
+    print(cm)
+
+    return accuracy, roc_auc
